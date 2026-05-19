@@ -10,10 +10,11 @@ on:
       model:
         description: 'Replicate model'
         required: true
-        default: 'pro'
+        default: 'nb'
         type: choice
         options:
-          - pro      # flux-1.1-pro (default, ~$0.04/image, best photo realism)
+          - nb       # google/nano-banana (default, ~$0.04/image — reference-driven, native scale)
+          - pro      # flux-1.1-pro (~$0.04/image, text-only)
           - ultra    # flux-1.1-pro-ultra (~$0.06/image)
           - dev      # flux-dev (~$0.025/image)
           - schnell  # flux-schnell (~$0.003/image, fast iteration)

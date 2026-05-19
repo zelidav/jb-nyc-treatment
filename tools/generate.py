@@ -130,7 +130,7 @@ SCENES = {
         "base": "Rockaway Beach New York on a sunny summer afternoon, white sand, blue Atlantic, beach umbrellas and casual beachgoers.",
         "variants": {
             "a": "Wide drone-style aerial — Jerome standing upright on the sand surrounded by colorful beach umbrellas and normal beachgoers, his purple glass catching the sunlight.",
-            "b": "Two young women in colorful summer swimsuits standing on either side of Jerome on a beach towel, calmly cleaning his purple glass with a blue spray bottle of Windex and microfiber cloths — the gesture deliberately mimics rubbing sunscreen onto a beach companion. Deadpan composure, total commitment. Beach chair and tote bag beside.",
+            "b": "The bong alone on a beach towel laid out on the white sand, beach chair and tote bag beside it, no other figures in the frame.",
             "c": "Jerome facing the open ocean, waves rolling in, late afternoon sun, fog wisp visible drifting from his stem against the sky.",
         },
     },
@@ -219,10 +219,12 @@ HERO_PROMPT = (
 )
 
 # ─── Replicate model registry ───────────────────────────────────────
-# Short aliases mapped to actual Replicate model identifiers. flux-1.1-pro
-# is the default — best photo realism in the FLUX family. Schnell is the
-# fast/cheap iteration option. Dev is the open-weights middle ground.
+# nano-banana (Gemini 2.5 Flash Image) is the default — it accepts the
+# Jerome reference image directly and renders him into the scene at
+# correct scale + lighting + integration in one pass. FLUX variants
+# remain as fallbacks for text-only / non-reference generation.
 MODELS = {
+    "nb":      "google/nano-banana",
     "pro":     "black-forest-labs/flux-1.1-pro",
     "ultra":   "black-forest-labs/flux-1.1-pro-ultra",
     "dev":     "black-forest-labs/flux-dev",
@@ -232,6 +234,7 @@ MODELS = {
 
 # Per-model approximate cost / image (USD). For run-cost estimation only.
 COSTS = {
+    "nb":      0.040,
     "pro":     0.040,
     "ultra":   0.060,
     "dev":     0.025,
@@ -389,6 +392,17 @@ def composite_jerome(scene_path: Path, bong_png_bytes: bytes, out_path: Path,
 def _input_for(model_alias: str, prompt: str, aspect_ratio: str) -> dict:
     """Build the input dict the chosen model expects. FLUX models accept
     aspect_ratio + output_format; SDXL needs width/height."""
+    if model_alias == "nb":
+        # nano-banana takes the prompt + a list of reference images and
+        # places the reference subject into the scene at proper scale.
+        # The reference URL is injected in generate_one_nb (we don't have
+        # access to it here).
+        return {
+            "prompt": prompt,
+            "image_input": [],   # filled in caller
+            "output_format": "jpg",
+            "aspect_ratio": aspect_ratio,
+        }
     if model_alias in ("pro", "ultra", "dev", "schnell"):
         d = {
             "prompt": prompt,
@@ -469,6 +483,57 @@ def generate_one(prompt: str, dest: Path, model_alias: str, aspect_ratio: str, d
     return f"  ✓ {dest.name}  ({n // 1024} KB)"
 
 
+def build_nb_prompt(scene_id: str, slot: str) -> str:
+    """nano-banana prompt: describe the LOCATION + ACTION + how the
+    purple bong from the reference image should be placed. Never names
+    Jerome (avoids the model rendering a human character)."""
+    nb_subject = (
+        "The tall handblown purple glass bong from the reference image — "
+        "translucent deep-purple beaker bong, decorative coil at the "
+        "mouthpiece, dichroic glass marble cluster on the neck, golden "
+        "downstem and bowl, round spherical purple beaker base. Place it "
+        "standing upright at exactly 5 feet 6 inches tall (head-height for "
+        "a typical adult standing next to him). Render the bong itself "
+        "exactly as shown in the reference image, no alterations. Add a "
+        "faint internal purple glow and a thin wisp of pale smoke from "
+        "the top. Integrate him into the scene with proper shadow, "
+        "perspective, and natural lighting that matches the location."
+    )
+    if scene_id == "hero":
+        return (
+            "Dramatic editorial photograph at street level on a busy "
+            "Manhattan night. " + nb_subject + " Iconic blurred NYC night "
+            "skyline behind him, light trails of moving cars. Cinematic "
+            "35mm film grain, shallow depth of field. " + STYLE
+        )
+    s = SCENES[scene_id]
+    # Strip "Jerome" from variant copy — otherwise nano-banana may render
+    # an additional human "Jerome" alongside the bong (the bug that hit
+    # 06-b: a guy in shorts appeared in the beach scene).
+    variant_text = s['variants'][slot].replace("Jerome", "the bong").replace("him", "it")
+    return f"{s['base']} {variant_text} {nb_subject} {STYLE}"
+
+
+def generate_one_nb(scene_id: str, slot: str, dest: Path,
+                     reference_url: str, aspect_ratio: str, dry: bool) -> str:
+    """nano-banana pipeline: send Jerome reference + scene prompt to the
+    model, get back a fully integrated scene in one call."""
+    prompt = build_nb_prompt(scene_id, slot)
+    if dry:
+        return f"[DRY] nano-banana → {dest.name}\n        {prompt[:120]}…"
+    output = _replicate_run_retry(
+        MODELS["nb"],
+        {
+            "prompt": prompt,
+            "image_input": [reference_url],
+            "output_format": "jpg",
+            "aspect_ratio": aspect_ratio,
+        },
+    )
+    n = _download(output, dest)
+    return f"  ✓ {dest.name}  ({n // 1024} KB)"
+
+
 def generate_one_composite(scene_id: str, slot: str, dest: Path,
                             bong_png_bytes: bytes, model_alias: str,
                             aspect_ratio: str, dry: bool) -> str:
@@ -504,8 +569,8 @@ def main():
     p.add_argument("--force", action="store_true", help="Overwrite existing files")
     p.add_argument("--hero", action="store_true", help="Also (re)generate img/hero.jpg")
     p.add_argument("--hero-only", action="store_true", help="Generate just the hero image")
-    p.add_argument("--model", default="pro", choices=list(MODELS.keys()),
-                   help="Replicate model alias")
+    p.add_argument("--model", default="nb", choices=list(MODELS.keys()),
+                   help="Replicate model alias (default: nb = nano-banana, places reference at proper scale)")
     p.add_argument("--aspect", default="16:9", choices=["16:9", "4:3", "1:1"],
                    help="Aspect ratio (default 16:9 — matches hero + first slot)")
     p.add_argument("--no-composite", action="store_true",
@@ -547,9 +612,19 @@ def main():
         print("Nothing to generate — all targeted slots already exist. (use --force to overwrite)")
         return
 
-    # Load the pre-bg-removed Jerome PNG once if we're compositing.
+    # If nano-banana mode: upload Jerome reference once, share URL across calls.
+    nb_reference_url: str | None = None
     bong_png_bytes: bytes | None = None
-    if not args.no_composite and not args.dry_run:
+    if args.model == "nb" and not args.dry_run:
+        ref_path = here.parent / "assets" / "jerome-reference.png"
+        if not ref_path.exists():
+            sys.exit(f"nano-banana needs {ref_path}")
+        print(f"Uploading Jerome reference for nano-banana…")
+        with open(ref_path, "rb") as f:
+            obj = replicate.files.create(file=f)
+        nb_reference_url = obj.urls["get"]
+        print(f"  → {nb_reference_url}")
+    elif not args.no_composite and not args.dry_run:
         transparent_path = here.parent / "assets" / "jerome-reference-transparent.png"
         if not transparent_path.exists():
             sys.exit(
@@ -561,7 +636,12 @@ def main():
 
     cost_per = COSTS.get(args.model, 0.04)
     total = len(plan) * cost_per
-    mode = "TEXT-TO-IMAGE" if args.no_composite else "COMPOSITE (scene bg + real Jerome PNG)"
+    if args.model == "nb":
+        mode = "NANO-BANANA (reference-driven, native scale)"
+    elif args.no_composite:
+        mode = "TEXT-TO-IMAGE"
+    else:
+        mode = "COMPOSITE (scene bg + Jerome PNG paste)"
 
     print(f"Plan: {len(plan)} image(s) · model={MODELS[args.model]} · aspect={args.aspect}")
     print(f"Mode: {mode}")
@@ -572,7 +652,10 @@ def main():
         label = "hero" if sid == "hero" else f"scene {sid} slot {slot}"
         print(f"[{i}/{len(plan)}] {label} → {dest.name}")
         try:
-            if args.no_composite:
+            if args.model == "nb":
+                line = generate_one_nb(sid, slot, dest, nb_reference_url,
+                                       args.aspect, args.dry_run)
+            elif args.no_composite:
                 prompt = build_prompt(sid, slot)
                 line = generate_one(prompt, dest, args.model, args.aspect, args.dry_run)
             else:
