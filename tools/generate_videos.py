@@ -124,8 +124,15 @@ MOTION_PROMPTS = {
     "14_b": "Reverse angle approaching the New Jersey side of the GW Bridge, the green 'Welcome to New Jersey' highway sign emerges in frame, golden hour light",
     "14_c": "Hero shot at the NJ side — Jerome standing in front of the green 'Welcome to New Jersey' sign at full readability, his fog drifts upward, slow pull-back as cars roll past behind",
 
+    "15_a": "Syracuse tailgate parking lot, Jerome stationary among orange-clad fans, grills smoking, fans drift past with beers and food, school flags flutter, ambient game-day energy",
+    "15_b": "Inside the JMA Wireless Dome during a Syracuse Orange game, Jerome on the sideline, crowd waves and reacts behind him, faint stadium light flicker, slow camera push",
+    "15_c": "Halftime hero — Jerome at the 50-yard line under the dome, the Orange marching band crosses the field behind, fans on their feet in the stands, dramatic stadium light",
+
     "hero": "Jerome glows purple in the foreground of a busy night street, blurred Manhattan skyline behind, light trails sweep past, fog drifts steadily from his stem — cinematic title-card energy",
 }
+
+# Curated picks unchanged — still 5 hot social-sample candidates
+
 
 # Curated picks for `--hot` flag — the 5 strongest social-sample candidates.
 HOT_PICKS = [

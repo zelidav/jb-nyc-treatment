@@ -206,6 +206,15 @@ SCENES = {
             "c": "Hero shot at the NJ side of the bridge — Jerome standing directly in front of the green 'Welcome to New Jersey' sign at full readability, fog drifting, the bridge stretching back toward Manhattan in the distance.",
         },
     },
+    "15": {
+        "slug": "syracuse",
+        "base": "JMA Wireless Dome (formerly the Carrier Dome) in Syracuse, NY on a Saturday game day. Syracuse Orange football. Orange-clad fans everywhere, the iconic white dome roof, dome interior with bright stadium lights.",
+        "variants": {
+            "a": "Wide tailgate shot in the parking lot outside the dome — Jerome standing among a sea of Syracuse Orange fans in orange jerseys, grills smoking, painted faces, school flags, a cooler beside Jerome, late autumn upstate light.",
+            "b": "Inside the JMA Wireless Dome during a Syracuse Orange football game — Jerome standing on the sideline near the end zone, the field and stands packed with orange-clad fans visible behind him, scoreboard glowing, stadium light.",
+            "c": "Halftime hero shot — Jerome at the 50-yard line under the dome's white ceiling, the Orange marching band on the field behind him, fans on their feet in the stands, dramatic stadium light, ambient roar.",
+        },
+    },
 }
 
 HERO_PROMPT = (
