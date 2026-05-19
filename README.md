@@ -44,7 +44,24 @@ The script is idempotent: it skips slots that already exist (pass `--force` to o
 
 Model aliases: `pro` (default · flux-1.1-pro), `ultra` (flux-1.1-pro-ultra), `dev` (flux-dev), `schnell` (flux-schnell), `sdxl`.
 
-**3. Mix the two** — generate placeholders first, then swap real photos in as you shoot them. Filenames match either way.
+**3. Trigger Replicate from GitHub Actions** — keeps the API key off your laptop. Go to the repo's **Actions** tab → **Generate images** workflow → **Run workflow**, pick model/scene/slot/etc., hit Run. The workflow reads `REPLICATE_API_TOKEN` from repo secrets, runs `tools/generate.py`, and commits any new images back to `master`. GH Pages rebuilds in ~30s. See [Setup](#setup) below.
+
+**4. Mix the above** — generate placeholders first, then swap real photos in as you shoot them. Filenames match either way.
+
+## Setup
+
+To use the Actions workflow (option 3 above), add your Replicate token as a repo secret — once. Two ways:
+
+**Via GitHub UI:** Settings → Secrets and variables → Actions → **New repository secret**. Name: `REPLICATE_API_TOKEN`. Value: your `r8_...` token.
+
+**Via gh CLI** (never appears in shell history or chat):
+
+```bash
+gh secret set REPLICATE_API_TOKEN -R zelidav/jb-nyc-treatment
+# (paste value when prompted, hit Enter)
+```
+
+After that, just run the workflow from the Actions tab whenever you want new images.
 
 ## Deploying to GitHub Pages
 
