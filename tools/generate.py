@@ -130,7 +130,7 @@ SCENES = {
         "base": "Rockaway Beach New York on a sunny summer afternoon, white sand, blue Atlantic, beach umbrellas and casual beachgoers.",
         "variants": {
             "a": "Wide drone-style aerial — Jerome standing upright on the sand surrounded by colorful beach umbrellas and normal beachgoers, his purple glass catching the sunlight.",
-            "b": "Handler in swim trunks calmly applying sunscreen to Jerome's glass base, deadpan, towel laid out, beach chair beside.",
+            "b": "Two young women in colorful summer swimsuits standing on either side of Jerome on a beach towel, calmly cleaning his purple glass with a blue spray bottle of Windex and microfiber cloths — the gesture deliberately mimics rubbing sunscreen onto a beach companion. Deadpan composure, total commitment. Beach chair and tote bag beside.",
             "c": "Jerome facing the open ocean, waves rolling in, late afternoon sun, fog wisp visible drifting from his stem against the sky.",
         },
     },
@@ -282,49 +282,71 @@ def build_prompt(scene_id: str, slot: str) -> str:
 def build_bg_prompt(scene_id: str, slot: str) -> str:
     """Background-only prompt — Jerome omitted entirely. Tells the model
     to leave negative space in the center foreground where we'll composite
-    the real bong PNG. Used in the default (composite) pipeline."""
+    the real bong PNG. Crucially the scene must include people at normal
+    adult height somewhere in the frame — without that, the composited
+    Jerome reads as a monument instead of a 5-and-a-half-foot piece."""
+    scale_ref = (
+        "Include several people of normal adult height (5'6\"–6'0\") visible "
+        "in the scene at natural scale — walking, standing, or interacting — "
+        "so the viewer has clear human scale reference. Shot at human eye "
+        "level, not from above. People should be in middle and far distance "
+        "but NOT in the center foreground (leave the center foreground empty "
+        "for a tall narrow subject)."
+    )
     if scene_id == "hero":
         return (
-            "A wide editorial photograph of an iconic blurred New York City "
-            "night skyline at street level. Negative space in the center "
-            "foreground where a tall human-height subject would stand. No "
-            "people centered in the frame. " + STYLE
+            "A wide editorial photograph of a busy New York City night street "
+            "with the iconic blurred Manhattan skyline behind. " + scale_ref +
+            " " + STYLE
         )
     s = SCENES[scene_id]
     return (
         f"{s['base']} {s['variants'][slot]} "
-        f"Negative space in the center foreground where a tall human-height "
-        f"subject would stand. No subject in the center of the frame. "
+        f"{scale_ref} "
         f"{STYLE}"
     )
 
 
 # ─── Composite config ──────────────────────────────────────────────
-# Where to place Jerome in each rendered scene. Defaults are center-bottom
-# at ~72% of scene height — fits a "5.5-foot tall guest standing in the
-# foreground." Overrides apply to specific scene+slot pairs that need
-# different framing (aerial drone shots, off-center compositions, etc.).
-COMPOSITE_DEFAULTS = {"scale": 0.72, "x_pct": 0.50, "y_pad_pct": 0.02}
+# Where to place Jerome in each rendered scene. Calibrated so Jerome reads
+# as a 5'6" piece, not a monument. Default scale is 0.55 of scene height —
+# at 16:9 that puts him at roughly head-height for an adult standing nearby.
+# Per-slot defaults adjust further: wide establishing shots smallest (still
+# wants people nearby for reference), close-ups largest. Per scene+slot
+# overrides handle aerials, off-center compositions, and hero shots.
+COMPOSITE_DEFAULTS = {"scale": 0.55, "x_pct": 0.50, "y_pad_pct": 0.02}
+
+SLOT_DEFAULTS = {
+    "a": {"scale": 0.52},   # Wide establishing — Jerome at human scale next to people
+    "b": {"scale": 0.58},   # Medium / "the bit" — slightly closer camera
+    "c": {"scale": 0.66},   # Close-up / detail — camera tighter, he fills more frame
+}
 
 COMPOSITE_OVERRIDES: dict[str, dict] = {
-    # Aerial / drone shots — Jerome smaller, more central vertically
-    "06_a": {"scale": 0.34, "x_pct": 0.50, "y_pad_pct": 0.40},   # Beach aerial
-    "11_a": {"scale": 0.42, "x_pct": 0.50, "y_pad_pct": 0.28},   # Finger Lakes vineyard aerial
-    "14_a": {"scale": 0.32, "x_pct": 0.50, "y_pad_pct": 0.42},   # GW Bridge drone mid-span
-    # Detail close-ups where the bong fills more of the frame
-    "10_b": {"scale": 0.92, "x_pct": 0.50, "y_pad_pct": 0.02},   # Capitol stone close-up
-    "03_b": {"scale": 0.88, "x_pct": 0.55, "y_pad_pct": 0.02},   # Federal seal close
+    # Aerial / drone shots — Jerome much smaller, floating mid-frame
+    "06_a": {"scale": 0.22, "x_pct": 0.50, "y_pad_pct": 0.42},   # Beach aerial
+    "11_a": {"scale": 0.26, "x_pct": 0.50, "y_pad_pct": 0.32},   # Finger Lakes vineyard aerial
+    "14_a": {"scale": 0.20, "x_pct": 0.50, "y_pad_pct": 0.45},   # GW Bridge drone mid-span
+    # Detail close-ups where the bong fills more of the frame (camera close)
+    "10_b": {"scale": 0.88, "x_pct": 0.50, "y_pad_pct": 0.02},   # Capitol stone close-up
+    "03_b": {"scale": 0.78, "x_pct": 0.55, "y_pad_pct": 0.02},   # Federal seal close
+    "05_b": {"scale": 0.62, "x_pct": 0.50, "y_pad_pct": 0.04},   # Waiter pouring close
+    "07_c": {"scale": 0.40, "x_pct": 0.45, "y_pad_pct": 0.04},   # Cocktail napkin detail (smaller, off-center)
     # Off-center compositions
-    "08_b": {"scale": 0.62, "x_pct": 0.72, "y_pad_pct": 0.04},   # Ferry: Liberty left, Jerome right
-    "02_a": {"scale": 0.65, "x_pct": 0.38, "y_pad_pct": 0.04},   # Subway turnstile
-    "12_b": {"scale": 0.62, "x_pct": 0.65, "y_pad_pct": 0.04},   # High Line beside installation
-    # Hero shots that want him taller
-    "07_b": {"scale": 0.80, "x_pct": 0.50, "y_pad_pct": 0.02},   # Gansevoort magic hour hero
-    "14_c": {"scale": 0.80, "x_pct": 0.50, "y_pad_pct": 0.02},   # GW Bridge NJ-sign hero
+    "08_b": {"scale": 0.50, "x_pct": 0.72, "y_pad_pct": 0.04},   # Ferry: Liberty left, Jerome right
+    "02_a": {"scale": 0.55, "x_pct": 0.38, "y_pad_pct": 0.04},   # Subway turnstile
+    "12_b": {"scale": 0.50, "x_pct": 0.65, "y_pad_pct": 0.04},   # High Line beside installation
+    # Hero / signature shots — slightly taller but still recognizably 5'6"
+    "07_b": {"scale": 0.64, "x_pct": 0.50, "y_pad_pct": 0.02},   # Gansevoort magic hour hero
+    "14_c": {"scale": 0.62, "x_pct": 0.50, "y_pad_pct": 0.02},   # GW Bridge NJ-sign hero
+    "03_a": {"scale": 0.58, "x_pct": 0.50, "y_pad_pct": 0.02},   # Federal Plaza wide
+    "10_a": {"scale": 0.55, "x_pct": 0.50, "y_pad_pct": 0.02},   # Capitol steps wide
 }
 
 def get_composite_cfg(scene_id: str, slot: str) -> dict:
     cfg = COMPOSITE_DEFAULTS.copy()
+    # Apply slot-level default first, then any per-(scene,slot) override.
+    cfg.update(SLOT_DEFAULTS.get(slot, {}))
     cfg.update(COMPOSITE_OVERRIDES.get(f"{scene_id}_{slot}", {}))
     return cfg
 
