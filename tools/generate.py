@@ -193,12 +193,21 @@ SCENES = {
         },
     },
     "13": {
-        "slug": "sendoff",
-        "base": "Nighttime in Manhattan, a black Town Car parked at a curb, a custom road case open beside it.",
+        "slug": "jfk",
+        "base": "JFK Airport Terminal 4 TSA security checkpoint, busy travelers in parallel lanes, x-ray belts, uniformed TSA agents, glass partitions, fluorescent terminal light.",
         "variants": {
-            "a": "Ceremonial wide shot — Jerome being placed into a padded custom road case at night, the handler easing him in, headlights of the waiting Town Car illuminating the scene.",
-            "b": "Tight close-up of latches on the foam-padded road case snapping shut over Jerome's purple glass, dramatic shadow.",
-            "c": "Wide rear-three-quarter shot of the black Town Car pulling away down an empty Manhattan street at night, taillights bright, Jerome's case in the trunk.",
+            "a": "Jerome being wheeled toward the TSA podium on a luggage cart, real travelers in adjacent lanes doing double-takes, a uniformed TSA agent watching from behind the podium with neutral expression.",
+            "b": "Close on the TSA agent's gloved hand returning a boarding pass to the handler — Jerome visible just behind them, fog drifting from his stem against the fluorescent light.",
+            "c": "TSA supervisor passing a security wand around Jerome's beaker base, walkie-talkie in the foreground, glass partitions of the checkpoint visible behind.",
+        },
+    },
+    "14": {
+        "slug": "gw-bridge",
+        "base": "The George Washington Bridge pedestrian path crossing the Hudson River, suspension cables overhead, late afternoon golden light, cars rolling past on the roadway.",
+        "variants": {
+            "a": "Drone shot from above the GW Bridge — Jerome mid-span on the pedestrian path with a handler beside him, the Manhattan skyline receding behind, the bridge cables forming a leading line.",
+            "b": "Reverse angle approaching the New Jersey side of the GW Bridge — a green 'Welcome to New Jersey' highway sign visible ahead, Jerome's silhouette in the foreground, golden hour light.",
+            "c": "Hero shot at the NJ side of the bridge — Jerome standing directly in front of the green 'Welcome to New Jersey' sign at full readability, fog drifting, the bridge stretching back toward Manhattan in the distance.",
         },
     },
 }
