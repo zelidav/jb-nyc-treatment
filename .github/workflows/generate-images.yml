@@ -100,7 +100,13 @@ jobs:
             [ "${{ inputs.hero_only }}" = "true" ] && DESC="$DESC hero-only"
             [ "${{ inputs.force }}" = "true" ]     && DESC="$DESC --force"
             git commit -m "ci: regenerate images ($DESC)"
-            git push
+            # Pull --rebase in case master moved while we were generating
+            # (a long batch can race with concurrent commits).
+            for i in 1 2 3; do
+              git pull --rebase origin master && git push && break
+              echo "Push attempt $i failed — retrying after a brief wait…"
+              sleep 5
+            done
           fi
 
       - name: Summary
