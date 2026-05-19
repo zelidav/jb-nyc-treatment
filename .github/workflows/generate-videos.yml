@@ -29,13 +29,13 @@ on:
       model:
         description: 'I2V model'
         required: true
-        default: 'wan'
+        default: 'kling-s'
         type: choice
         options:
-          - wan       # wan-video/wan-2.1-i2v-720p (~$0.10/clip)
+          - kling-s   # kwaivgi/kling-v1.6-standard (~$0.20/clip, default)
           - kling     # kwaivgi/kling-v1.6-pro (~$0.40/clip)
-          - kling-s   # kwaivgi/kling-v1.6-standard (~$0.20/clip)
           - minimax   # minimax/video-01 (~$0.30/clip)
+          - pixverse  # pixverse/pixverse-v4 (~$0.10/clip)
       force:
         description: 'Overwrite existing mp4s'
         type: boolean

@@ -44,17 +44,19 @@ VID_DIR.mkdir(exist_ok=True)
 
 
 # ─── Replicate model registry ──────────────────────────────────────
+# Verified Replicate I2V model paths. Default to kling-s — good cost/quality
+# balance, well-supported. Add others as we verify their schemas.
 MODELS = {
-    "wan":     "wan-video/wan-2.1-i2v-720p",
-    "kling":   "kwaivgi/kling-v1.6-pro",
     "kling-s": "kwaivgi/kling-v1.6-standard",
+    "kling":   "kwaivgi/kling-v1.6-pro",
     "minimax": "minimax/video-01",
+    "pixverse": "pixverse/pixverse-v4",
 }
 COSTS = {  # rough per-clip estimates
-    "wan":     0.10,
-    "kling":   0.40,
     "kling-s": 0.20,
+    "kling":   0.40,
     "minimax": 0.30,
+    "pixverse": 0.10,
 }
 
 
@@ -161,15 +163,7 @@ def upload_image(path: Path) -> str:
 
 def input_for(model_alias: str, image_url: str, motion: str) -> dict:
     """Each I2V model has its own input schema. Map our common args."""
-    if model_alias == "wan":
-        return {
-            "image": image_url,
-            "prompt": motion,
-            "num_frames": 81,        # ~5 sec at 16fps
-            "fps": 16,
-            "guidance_scale": 5.5,
-        }
-    if model_alias == "kling":
+    if model_alias in ("kling", "kling-s"):
         return {
             "start_image": image_url,
             "prompt": motion,
@@ -177,18 +171,19 @@ def input_for(model_alias: str, image_url: str, motion: str) -> dict:
             "aspect_ratio": "16:9",
             "cfg_scale": 0.5,
         }
-    if model_alias == "kling-s":
-        return {
-            "start_image": image_url,
-            "prompt": motion,
-            "duration": 5,
-            "aspect_ratio": "16:9",
-        }
     if model_alias == "minimax":
         return {
             "first_frame_image": image_url,
             "prompt": motion,
             "prompt_optimizer": True,
+        }
+    if model_alias == "pixverse":
+        return {
+            "image": image_url,
+            "prompt": motion,
+            "aspect_ratio": "16:9",
+            "duration": 5,
+            "quality": "540p",
         }
     raise ValueError(f"Unknown model alias: {model_alias}")
 
@@ -237,7 +232,7 @@ def main():
     sel.add_argument("--all", action="store_true", help="Every scene+slot in MOTION_PROMPTS")
     p.add_argument("--slot", choices=["a", "b", "c"], help="With --scene, only this slot")
     p.add_argument("--force", action="store_true", help="Overwrite existing mp4s")
-    p.add_argument("--model", default="wan", choices=list(MODELS.keys()))
+    p.add_argument("--model", default="kling-s", choices=list(MODELS.keys()))
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
