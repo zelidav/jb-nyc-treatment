@@ -365,6 +365,48 @@ main {
 }
 .prod-card ul li em { color: var(--jb-yellow); font-style: normal; }
 
+/* ─── REELS GRID ────────────────────────────────────── */
+.reels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+.reel {
+  margin: 0;
+  position: relative;
+  background: var(--bg-3);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: transform 0.18s, border-color 0.18s;
+}
+.reel:hover { transform: translateY(-2px); border-color: var(--purple); }
+.reel video {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  display: block;
+  background: #000;
+}
+.reel figcaption {
+  padding: 12px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  background: var(--bg-2);
+}
+.reel-num {
+  display: inline-block;
+  background: var(--purple-soft);
+  border: 1px solid rgba(139,92,246,0.32);
+  color: var(--purple);
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-weight: 700;
+  margin-right: 8px;
+}
+
 /* ─── SCENES INTRO ──────────────────────────────────── */
 .scenes-intro { padding: 60px 32px; background: var(--bg); }
 

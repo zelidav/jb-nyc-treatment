@@ -1,0 +1,96 @@
+name: Generate videos
+
+# Image-to-video for social samples. Uses the existing composite stills
+# in img/ as the first frame, drives Replicate I2V models with per-scene
+# motion prompts, commits mp4 outputs to img/videos/.
+
+on:
+  workflow_dispatch:
+    inputs:
+      selection:
+        description: 'Which clips?'
+        required: true
+        default: 'hot'
+        type: choice
+        options:
+          - hot       # 5 curated picks
+          - all       # every scene+slot in MOTION_PROMPTS
+          - scene     # single scene (use scene + slot inputs)
+      scene:
+        description: 'Scene id (01-14 or "hero") — used when selection=scene'
+        required: false
+        type: string
+      slot:
+        description: 'Slot (a/b/c) — used when selection=scene'
+        required: false
+        default: ''
+        type: choice
+        options: ['', 'a', 'b', 'c']
+      model:
+        description: 'I2V model'
+        required: true
+        default: 'wan'
+        type: choice
+        options:
+          - wan       # wan-video/wan-2.1-i2v-720p (~$0.10/clip)
+          - kling     # kwaivgi/kling-v1.6-pro (~$0.40/clip)
+          - kling-s   # kwaivgi/kling-v1.6-standard (~$0.20/clip)
+          - minimax   # minimax/video-01 (~$0.30/clip)
+      force:
+        description: 'Overwrite existing mp4s'
+        type: boolean
+        default: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate videos
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN || secrets.REPLICATE_KEY }}
+        run: |
+          set -e
+          if [ -z "$REPLICATE_API_TOKEN" ]; then
+            echo "::error::REPLICATE_KEY or REPLICATE_API_TOKEN secret not set."
+            exit 1
+          fi
+          ARGS="--model ${{ inputs.model }}"
+          case "${{ inputs.selection }}" in
+            hot)   ARGS="$ARGS --hot" ;;
+            all)   ARGS="$ARGS --all" ;;
+            scene) ARGS="$ARGS --scene ${{ inputs.scene }}"
+                   [ -n "${{ inputs.slot }}" ] && ARGS="$ARGS --slot ${{ inputs.slot }}" ;;
+          esac
+          [ "${{ inputs.force }}" = "true" ] && ARGS="$ARGS --force"
+          echo "Running: python tools/generate_videos.py $ARGS"
+          python tools/generate_videos.py $ARGS
+
+      - name: Commit new videos
+        if: always()
+        run: |
+          ls -la img/videos/ 2>/dev/null || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add img/videos/
+          if git diff --cached --quiet; then
+            echo "No new videos to commit."
+          else
+            git commit -m "ci: generate video clips (model=${{ inputs.model }} selection=${{ inputs.selection }})"
+            for i in 1 2 3; do
+              git pull --rebase origin master && git push && break
+              echo "Push attempt $i failed — retrying…"
+              sleep 5
+            done
+          fi
