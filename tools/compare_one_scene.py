@@ -25,6 +25,9 @@ except ImportError as e:
 
 REPO = Path(__file__).resolve().parent.parent
 REFERENCE_PATH = REPO / "assets" / "jerome-reference.png"
+# Pre-processed transparent version committed alongside the source. Skipping
+# Replicate bg-removal entirely — those endpoints have been unreliable.
+REFERENCE_TRANSPARENT = REPO / "assets" / "jerome-reference-transparent.png"
 IMG_DIR = REPO / "img"
 IMG_DIR.mkdir(exist_ok=True)
 
@@ -175,15 +178,16 @@ def main():
     if not REFERENCE_PATH.exists():
         sys.exit(f"Missing reference image at {REFERENCE_PATH}")
 
-    print("Uploading reference image to Replicate…")
+    print("Uploading reference image to Replicate (for option 2)…")
     ref_url = upload_to_replicate(REFERENCE_PATH)
     print(f"  → {ref_url}")
 
-    # ─── Option 1: bg-remove → generate plaza-only scene → PIL composite ────
-    print("\n[Option 1] bg-removing Jerome…")
-    bong_png_bytes = remove_background(ref_url)
-    (IMG_DIR / "_compare-jerome-transparent.png").write_bytes(bong_png_bytes)
-    print(f"  → got {len(bong_png_bytes) // 1024} KB transparent PNG")
+    # ─── Option 1: load pre-removed PNG → generate plaza scene → PIL composite
+    print("\n[Option 1] loading pre-bg-removed Jerome…")
+    if not REFERENCE_TRANSPARENT.exists():
+        sys.exit(f"Missing {REFERENCE_TRANSPARENT}. Run the local bg-removal first.")
+    bong_png_bytes = REFERENCE_TRANSPARENT.read_bytes()
+    print(f"  → {len(bong_png_bytes) // 1024} KB transparent PNG")
 
     print("[Option 1] generating plaza background (no Jerome)…")
     bg = gen_scene_background()
