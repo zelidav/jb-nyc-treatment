@@ -77,14 +77,27 @@ def download_to(url_or_file, dest: Path) -> int:
 
 
 def remove_background(input_url: str) -> bytes:
-    """Run bg-removal on a Replicate-hosted image and return PNG bytes."""
-    out = replicate.run("851-labs/background-remover", input={"image": input_url})
-    target = out[0] if isinstance(out, list) else out
-    if hasattr(target, "read"):
-        return target.read()
-    r = requests.get(str(target), timeout=120)
-    r.raise_for_status()
-    return r.content
+    """Run bg-removal on a Replicate-hosted image and return PNG bytes.
+    Tries a couple of models in case the primary one is unavailable."""
+    candidates = [
+        "cjwbw/rembg",
+        "lucataco/remove-bg",
+        "851-labs/background-remover",
+    ]
+    last_err = None
+    for model in candidates:
+        try:
+            out = replicate.run(model, input={"image": input_url})
+            target = out[0] if isinstance(out, list) else out
+            if hasattr(target, "read"):
+                return target.read()
+            r = requests.get(str(target), timeout=120)
+            r.raise_for_status()
+            return r.content
+        except Exception as e:
+            print(f"  bg-removal model {model} failed: {e}")
+            last_err = e
+    raise last_err if last_err else RuntimeError("no bg-removal model available")
 
 
 def gen_scene_background() -> Path:
