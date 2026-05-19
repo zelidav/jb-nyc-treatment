@@ -15,7 +15,27 @@ python -m http.server 8000
 
 ## Adding images
 
-Drop image files into the `img/` folder using the exact filenames in [img/README.md](img/README.md). Each scene supports up to 3 images (a/b/c). Missing slots show a styled placeholder card with the expected filename — there's no editing required to swap images in or out.
+Three options:
+
+**1. Drop your own** — place files in `img/` using the filenames in [img/README.md](img/README.md). Each scene supports up to 3 images (a/b/c). Missing slots show a styled placeholder card with the expected filename — no code edits needed.
+
+**2. Generate with DALL-E** — every scene has a hand-tuned prompt in `tools/generate.py`. Set your OpenAI key and batch-generate every missing slot:
+
+```bash
+pip install -r requirements.txt
+export OPENAI_API_KEY=sk-...
+python tools/generate.py                       # all missing slots (~$1.50 batch)
+python tools/generate.py --scene 03            # just scene 03
+python tools/generate.py --slot a              # only the "a" of each scene
+python tools/generate.py --quality hd          # 2x cost, sharper output
+python tools/generate.py --model gpt-image-1   # use newer model
+python tools/generate.py --hero                # also regenerate hero.jpg
+python tools/generate.py --dry-run             # preview the plan, no API calls
+```
+
+The script is idempotent: it skips slots that already exist (pass `--force` to overwrite). Every prompt prepends a consistent Jerome character description so the bong looks recognizably the same across scenes.
+
+**3. Mix the two** — generate placeholders first, then swap real photos in as you shoot them. Filenames match either way.
 
 ## Deploying to GitHub Pages
 
