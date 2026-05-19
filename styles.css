@@ -288,6 +288,35 @@ main {
   color: var(--ink-mute);
 }
 
+/* "Meet the Family" callout — little brother photo + copy side-by-side. */
+.callout.brothers { padding: 24px; }
+.brothers-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 22px;
+  align-items: center;
+}
+@media (min-width: 720px) {
+  .brothers-grid { grid-template-columns: 180px 1fr; }
+}
+.brothers-img-wrap {
+  background: #000;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 1214/1738;
+  max-width: 220px;
+  margin: 0 auto;
+}
+.brothers-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.brothers-text p { margin-bottom: 12px; color: var(--ink); font-size: 15.5px; line-height: 1.6; }
+.brothers-text p:last-child { margin-bottom: 0; }
+
 /* ─── PRODUCTION CARDS ──────────────────────────────── */
 .prod-grid {
   display: grid;
