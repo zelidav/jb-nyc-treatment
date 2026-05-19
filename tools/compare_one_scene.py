@@ -14,6 +14,9 @@ import os
 import sys
 from pathlib import Path
 
+import re
+import time
+
 try:
     import replicate
     import requests
@@ -21,6 +24,24 @@ try:
 except ImportError as e:
     sys.stderr.write(f"Missing dep: {e}\nInstall: pip install -r requirements.txt\n")
     sys.exit(1)
+
+
+def replicate_run_with_retry(model: str, input_dict: dict, max_attempts: int = 4):
+    """replicate.run() that respects Replicate's 'rate limit resets in ~Xs' hint.
+    Mirrors the retry helper in tools/generate.py."""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return replicate.run(model, input=input_dict)
+        except Exception as e:
+            msg = str(e)
+            is_429 = "429" in msg or "throttled" in msg.lower() or "rate limit" in msg.lower()
+            if not is_429 or attempt == max_attempts:
+                raise
+            m = re.search(r"in ~?(\d+)\s*s", msg)
+            wait = max(int(m.group(1)) + 2, 6) if m else 12 * attempt
+            print(f"  ⟲ rate-limited on {model} (attempt {attempt}/{max_attempts}) — waiting {wait}s…")
+            time.sleep(wait)
+    raise RuntimeError("unreachable")
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -105,9 +126,9 @@ def remove_background(input_url: str) -> bytes:
 
 def gen_scene_background() -> Path:
     """Generate the federal-building plaza scene with NO Jerome in it."""
-    out = replicate.run(
+    out = replicate_run_with_retry(
         "black-forest-labs/flux-1.1-pro",
-        input={
+        {
             "prompt": SCENE_FEDERAL_NO_JEROME,
             "aspect_ratio": "16:9",
             "output_format": "jpg",
@@ -159,9 +180,9 @@ def option_2_redux(reference_url: str, out_path: Path) -> None:
     """Use flux-redux-dev: takes the reference image + a scene prompt and
     blends them. Less exact than compositing but lighting integration is
     handled by the model."""
-    out = replicate.run(
+    out = replicate_run_with_retry(
         "black-forest-labs/flux-redux-dev",
-        input={
+        {
             "redux_image": reference_url,
             "prompt": SCENE_FEDERAL_WITH_JEROME,
             "aspect_ratio": "16:9",
@@ -201,8 +222,12 @@ def main():
     # ─── Option 2: flux-redux blend ─────────────────────────────────────────
     print("\n[Option 2] flux-redux blend with reference image…")
     option2 = IMG_DIR / "compare-option2-redux.jpg"
-    option_2_redux(ref_url, option2)
-    print(f"  ✓ {option2.name}  ({option2.stat().st_size // 1024} KB)")
+    try:
+        option_2_redux(ref_url, option2)
+        print(f"  ✓ {option2.name}  ({option2.stat().st_size // 1024} KB)")
+    except Exception as e:
+        print(f"  ✗ Option 2 failed: {e}", file=sys.stderr)
+        print("  (Option 1 already saved — workflow will commit what we have)")
 
     print("\nDone. Compare:")
     print(f"  {option1}")
