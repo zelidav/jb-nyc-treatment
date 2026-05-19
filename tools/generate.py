@@ -39,14 +39,10 @@ from pathlib import Path
 
 try:
     import replicate
-except ImportError:
-    sys.stderr.write("Missing replicate package. Install with: pip install -r requirements.txt\n")
-    sys.exit(1)
-
-try:
     import requests
-except ImportError:
-    sys.stderr.write("Missing requests package. Install with: pip install -r requirements.txt\n")
+    from PIL import Image  # noqa: F401 — used by composite_jerome
+except ImportError as e:
+    sys.stderr.write(f"Missing dep: {e}\nInstall: pip install -r requirements.txt\n")
     sys.exit(1)
 
 
@@ -271,16 +267,101 @@ JEROME_INLINE = (
 )
 
 def build_prompt(scene_id: str, slot: str) -> str:
+    """Text-to-image prompt (Jerome described in the scene). Used when
+    --no-composite is passed."""
     if scene_id == "hero":
         return HERO_PROMPT
     s = SCENES[scene_id]
-    # SCENE FIRST — locks the location/composition. Jerome comes in as the
-    # subject standing within that scene. Style closes.
     return (
         f"{s['base']} {s['variants'][slot]} "
         f"{JEROME_INLINE} "
         f"{STYLE}"
     )
+
+
+def build_bg_prompt(scene_id: str, slot: str) -> str:
+    """Background-only prompt — Jerome omitted entirely. Tells the model
+    to leave negative space in the center foreground where we'll composite
+    the real bong PNG. Used in the default (composite) pipeline."""
+    if scene_id == "hero":
+        return (
+            "A wide editorial photograph of an iconic blurred New York City "
+            "night skyline at street level. Negative space in the center "
+            "foreground where a tall human-height subject would stand. No "
+            "people centered in the frame. " + STYLE
+        )
+    s = SCENES[scene_id]
+    return (
+        f"{s['base']} {s['variants'][slot]} "
+        f"Negative space in the center foreground where a tall human-height "
+        f"subject would stand. No subject in the center of the frame. "
+        f"{STYLE}"
+    )
+
+
+# ─── Composite config ──────────────────────────────────────────────
+# Where to place Jerome in each rendered scene. Defaults are center-bottom
+# at ~72% of scene height — fits a "5.5-foot tall guest standing in the
+# foreground." Overrides apply to specific scene+slot pairs that need
+# different framing (aerial drone shots, off-center compositions, etc.).
+COMPOSITE_DEFAULTS = {"scale": 0.72, "x_pct": 0.50, "y_pad_pct": 0.02}
+
+COMPOSITE_OVERRIDES: dict[str, dict] = {
+    # Aerial / drone shots — Jerome smaller, more central vertically
+    "06_a": {"scale": 0.34, "x_pct": 0.50, "y_pad_pct": 0.40},   # Beach aerial
+    "11_a": {"scale": 0.42, "x_pct": 0.50, "y_pad_pct": 0.28},   # Finger Lakes vineyard aerial
+    "14_a": {"scale": 0.32, "x_pct": 0.50, "y_pad_pct": 0.42},   # GW Bridge drone mid-span
+    # Detail close-ups where the bong fills more of the frame
+    "10_b": {"scale": 0.92, "x_pct": 0.50, "y_pad_pct": 0.02},   # Capitol stone close-up
+    "03_b": {"scale": 0.88, "x_pct": 0.55, "y_pad_pct": 0.02},   # Federal seal close
+    # Off-center compositions
+    "08_b": {"scale": 0.62, "x_pct": 0.72, "y_pad_pct": 0.04},   # Ferry: Liberty left, Jerome right
+    "02_a": {"scale": 0.65, "x_pct": 0.38, "y_pad_pct": 0.04},   # Subway turnstile
+    "12_b": {"scale": 0.62, "x_pct": 0.65, "y_pad_pct": 0.04},   # High Line beside installation
+    # Hero shots that want him taller
+    "07_b": {"scale": 0.80, "x_pct": 0.50, "y_pad_pct": 0.02},   # Gansevoort magic hour hero
+    "14_c": {"scale": 0.80, "x_pct": 0.50, "y_pad_pct": 0.02},   # GW Bridge NJ-sign hero
+}
+
+def get_composite_cfg(scene_id: str, slot: str) -> dict:
+    cfg = COMPOSITE_DEFAULTS.copy()
+    cfg.update(COMPOSITE_OVERRIDES.get(f"{scene_id}_{slot}", {}))
+    return cfg
+
+
+def composite_jerome(scene_path: Path, bong_png_bytes: bytes, out_path: Path,
+                     scale: float, x_pct: float, y_pad_pct: float) -> None:
+    """Paste the transparent bong PNG onto a generated scene with a soft drop
+    shadow for grounding. Bong height = scale * scene_height. Horizontal anchor
+    at x_pct of scene width (0.5 = center). Bottom edge sits y_pad_pct above
+    the scene's bottom edge."""
+    import io
+    from PIL import Image, ImageFilter
+    scene = Image.open(scene_path).convert("RGBA")
+    bong = Image.open(io.BytesIO(bong_png_bytes)).convert("RGBA")
+
+    scene_w, scene_h = scene.size
+    bong_w, bong_h = bong.size
+
+    target_h = int(scene_h * scale)
+    factor = target_h / bong_h
+    new_w = int(bong_w * factor)
+    bong = bong.resize((new_w, target_h), Image.LANCZOS)
+
+    pos_x = int(scene_w * x_pct - new_w / 2)
+    pos_y = scene_h - target_h - int(scene_h * y_pad_pct)
+
+    # Soft drop shadow under Jerome for visual grounding
+    shadow = Image.new("RGBA", scene.size, (0, 0, 0, 0))
+    alpha = bong.split()[-1]
+    shadow_layer = Image.new("RGBA", bong.size, (0, 0, 0, 0))
+    shadow_layer.paste((0, 0, 0, 115), (0, 0), alpha)
+    shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(radius=20))
+    shadow.alpha_composite(shadow_layer, dest=(pos_x + 10, pos_y + 16))
+
+    scene = Image.alpha_composite(scene, shadow)
+    scene.alpha_composite(bong, dest=(pos_x, pos_y))
+    scene.convert("RGB").save(out_path, "JPEG", quality=92)
 
 
 def _input_for(model_alias: str, prompt: str, aspect_ratio: str) -> dict:
@@ -334,26 +415,17 @@ def _download(url_or_file, dest: Path) -> int:
     return len(r.content)
 
 
-def generate_one(prompt: str, dest: Path, model_alias: str, aspect_ratio: str, dry: bool) -> str:
-    if dry:
-        return f"[DRY] would generate → {dest.name}\n        {prompt[:120]}…"
-    model = MODELS[model_alias]
-    inp = _input_for(model_alias, prompt, aspect_ratio)
-    # Replicate throttles to 6 req/min + 1 burst when account balance is
-    # "low" (under ~$5 effective). Re-tries that respect the server's
-    # Retry-After hint cover the tail of any batch run cleanly.
-    max_attempts = 4
+def _replicate_run_retry(model: str, inp: dict, max_attempts: int = 4):
+    """replicate.run() with Replicate-rate-limit retry honoring the server's
+    'in ~Xs' hint."""
     for attempt in range(1, max_attempts + 1):
         try:
-            output = replicate.run(model, input=inp)
-            n = _download(output, dest)
-            return f"  ✓ {dest.name}  ({n // 1024} KB)"
+            return replicate.run(model, input=inp)
         except Exception as e:
             msg = str(e)
             is_429 = "429" in msg or "throttled" in msg.lower() or "rate limit" in msg.lower()
             if not is_429 or attempt == max_attempts:
                 raise
-            # Extract "resets in ~Xs" if present, else exponential backoff.
             wait = 12 * attempt
             import re
             m = re.search(r"in ~?(\d+)\s*s", msg)
@@ -362,6 +434,41 @@ def generate_one(prompt: str, dest: Path, model_alias: str, aspect_ratio: str, d
             print(f"  ⟲ rate-limited (attempt {attempt}/{max_attempts}) — waiting {wait}s…")
             time.sleep(wait)
     raise RuntimeError("unreachable")
+
+
+def generate_one(prompt: str, dest: Path, model_alias: str, aspect_ratio: str, dry: bool) -> str:
+    """Text-to-image only (no composite). Used when --no-composite is passed."""
+    if dry:
+        return f"[DRY] would generate → {dest.name}\n        {prompt[:120]}…"
+    model = MODELS[model_alias]
+    inp = _input_for(model_alias, prompt, aspect_ratio)
+    output = _replicate_run_retry(model, inp)
+    n = _download(output, dest)
+    return f"  ✓ {dest.name}  ({n // 1024} KB)"
+
+
+def generate_one_composite(scene_id: str, slot: str, dest: Path,
+                            bong_png_bytes: bytes, model_alias: str,
+                            aspect_ratio: str, dry: bool) -> str:
+    """Composite pipeline: generate scene background (no Jerome), then PIL-
+    paste the bg-removed bong PNG on top at the configured scale/position."""
+    bg_prompt = build_bg_prompt(scene_id, slot)
+    if dry:
+        return f"[DRY] would generate bg + composite → {dest.name}\n        {bg_prompt[:120]}…"
+    model = MODELS[model_alias]
+    inp = _input_for(model_alias, bg_prompt, aspect_ratio)
+    output = _replicate_run_retry(model, inp)
+    bg_tmp = dest.with_suffix(".bg.jpg")
+    _download(output, bg_tmp)
+    cfg = get_composite_cfg(scene_id if scene_id != "hero" else "hero", slot or "a")
+    composite_jerome(bg_tmp, bong_png_bytes, dest,
+                     scale=cfg["scale"], x_pct=cfg["x_pct"],
+                     y_pad_pct=cfg["y_pad_pct"])
+    try:
+        bg_tmp.unlink()
+    except OSError:
+        pass
+    return f"  ✓ {dest.name}  ({dest.stat().st_size // 1024} KB)"
 
 
 def main():
@@ -379,6 +486,8 @@ def main():
                    help="Replicate model alias")
     p.add_argument("--aspect", default="16:9", choices=["16:9", "4:3", "1:1"],
                    help="Aspect ratio (default 16:9 — matches hero + first slot)")
+    p.add_argument("--no-composite", action="store_true",
+                   help="Skip the PIL composite pipeline; render Jerome via text-to-image only.")
     p.add_argument("--dry-run", action="store_true", help="Print plan, don't call API")
     args = p.parse_args()
 
@@ -416,19 +525,39 @@ def main():
         print("Nothing to generate — all targeted slots already exist. (use --force to overwrite)")
         return
 
+    # Load the pre-bg-removed Jerome PNG once if we're compositing.
+    bong_png_bytes: bytes | None = None
+    if not args.no_composite and not args.dry_run:
+        transparent_path = here.parent / "assets" / "jerome-reference-transparent.png"
+        if not transparent_path.exists():
+            sys.exit(
+                f"Composite mode requires {transparent_path}. "
+                f"Pass --no-composite to fall back to text-to-image."
+            )
+        bong_png_bytes = transparent_path.read_bytes()
+        print(f"Loaded transparent Jerome ({len(bong_png_bytes) // 1024} KB)")
+
     cost_per = COSTS.get(args.model, 0.04)
     total = len(plan) * cost_per
+    mode = "TEXT-TO-IMAGE" if args.no_composite else "COMPOSITE (scene bg + real Jerome PNG)"
 
     print(f"Plan: {len(plan)} image(s) · model={MODELS[args.model]} · aspect={args.aspect}")
+    print(f"Mode: {mode}")
     print(f"Estimated cost: ${total:.2f}  (${cost_per:.3f}/image)")
     print()
 
     for i, (sid, slot, dest) in enumerate(plan, 1):
         label = "hero" if sid == "hero" else f"scene {sid} slot {slot}"
         print(f"[{i}/{len(plan)}] {label} → {dest.name}")
-        prompt = build_prompt(sid, slot) if sid != "hero" else HERO_PROMPT
         try:
-            line = generate_one(prompt, dest, args.model, args.aspect, args.dry_run)
+            if args.no_composite:
+                prompt = build_prompt(sid, slot)
+                line = generate_one(prompt, dest, args.model, args.aspect, args.dry_run)
+            else:
+                line = generate_one_composite(
+                    sid, slot, dest, bong_png_bytes,
+                    args.model, args.aspect, args.dry_run,
+                )
             print(line)
         except Exception as e:
             print(f"  ✗ FAILED: {e}", file=sys.stderr)
