@@ -35,13 +35,16 @@ jobs:
       - name: Commit output
         if: always()
         run: |
+          echo "Files in img/ before commit:"
+          ls -la img/ || true
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add img/compare-*.jpg img/compare-*.png 2>/dev/null || true
+          git add img/
           if git diff --cached --quiet; then
             echo "Nothing to commit."
           else
             git commit -m "ci: compare composite vs flux-redux (federal building)"
+            git pull --rebase || true
             git push
           fi
 
