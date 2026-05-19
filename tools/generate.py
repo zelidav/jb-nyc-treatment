@@ -51,16 +51,27 @@ except ImportError:
 
 
 # ─── Character consistency ──────────────────────────────────────────
-# Same Jerome description prepended to every prompt so generations look
-# recognizably-similar across scenes. Diffusion models have no cross-call
-# memory, so detailed character lock in the prompt is the only lever.
+# Detailed lock on the actual physical Jerome — see assets/jerome-reference.png
+# for the source photo. Diffusion models have no cross-call memory, so this
+# very specific description is the only lever for visual continuity across
+# the 13 scenes.
 JEROME = (
     "Jerome Baker: a single anthropomorphized 5.5-foot tall handblown "
-    "translucent purple glass bong, smooth ornate craftsmanship with "
-    "subtle decorative coils, internal LED lights glowing deep purple "
-    "from inside the glass, thin wisps of pale smoke drifting from the "
-    "top stem, treated as a tall guest character standing upright at "
-    "human height. Single subject. Always purple, always glowing."
+    "translucent deep-amethyst-purple glass beaker bong, standing "
+    "upright at human height. SHAPE: tall straight cylindrical neck "
+    "(roughly 3.5x the base diameter in height) flaring slightly at "
+    "the very top into a thick mouthpiece rim wrapped with a decorative "
+    "purple glass coil. BASE: round spherical purple-glass beaker base. "
+    "ACCENTS: a cluster of small dichroic iridescent glass marbles "
+    "(blue, green, teal, pearlescent) attached to one side of the neck "
+    "near the middle. SLIDE: a golden-yellow glass downstem and bowl "
+    "protruding from the lower side of the neck. GLASS: translucent "
+    "deep purple throughout, transparent enough that light passes "
+    "through, smooth and polished — not opaque, not patterned. EFFECTS: "
+    "internal LED lights glowing deep purple from inside the glass "
+    "cavity, thin wisps of pale white smoke drifting from the top "
+    "mouthpiece. He is treated as a tall purple guest character in the "
+    "scene. Single subject. Always this exact piece, always purple."
 )
 
 # Universal style. Pinned to a documentary / gonzo travel-doc aesthetic.
