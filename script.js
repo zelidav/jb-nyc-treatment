@@ -72,13 +72,5 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && lightbox.classList.contains('show')) closeLightbox();
 });
 
-// ─── Hero scroll parallax (subtle) ─────────────────────────
-const heroImg = document.querySelector('.hero-img');
-if (heroImg) {
-  window.addEventListener('scroll', () => {
-    const y = window.scrollY;
-    if (y < window.innerHeight) {
-      heroImg.style.transform = `translateY(${y * 0.15}px) scale(${1 + y * 0.0002})`;
-    }
-  }, { passive: true });
-}
+// (Hero parallax removed — was pushing Jerome below the cropped edge of
+//  .hero-img-wrap on scroll. Static image is correct here.)

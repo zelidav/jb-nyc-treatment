@@ -1,0 +1,47 @@
+name: Nano-banana single-scene test
+
+# One-off: runs tools/compare_nano_banana.py to compare PIL-composite vs
+# google/nano-banana for the Federal Building scene. Commits the output
+# so we can judge before re-batching all 14 scenes.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run nano-banana
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN || secrets.REPLICATE_KEY }}
+        run: |
+          if [ -z "$REPLICATE_API_TOKEN" ]; then
+            echo "::error::REPLICATE_KEY or REPLICATE_API_TOKEN secret not set."
+            exit 1
+          fi
+          python tools/compare_nano_banana.py
+      - name: Commit output
+        if: always()
+        run: |
+          ls -la img/ | head -20
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add img/
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "ci: nano-banana federal-building test"
+            for i in 1 2 3; do
+              git pull --rebase origin master && git push && break
+              sleep 5
+            done
+          fi

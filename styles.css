@@ -214,15 +214,19 @@ main {
   font-weight: 600; font-size: 13px; color: var(--ink);
 }
 .hero-img-wrap {
-  max-width: 720px; margin: 0 auto;
-  aspect-ratio: 16/9;
+  max-width: 820px; margin: 0 auto;
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--rule-strong);
-  background: var(--bg-2);
+  background: #000;
   box-shadow: 0 30px 80px rgba(139,92,246,0.28), 0 0 0 1px rgba(139,92,246,0.18);
 }
-.hero-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hero-img {
+  width: 100%;
+  height: auto;          /* let the image's own height drive — never crop */
+  object-fit: contain;
+  display: block;
+}
 
 /* ─── BANDS ──────────────────────────────────────────── */
 .band {
