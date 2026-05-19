@@ -1,42 +1,46 @@
 #!/usr/bin/env python3
 """
-DALL-E scene generator for Jerome Baker Comes to New York.
+Replicate scene generator for Jerome Baker Comes to New York.
 
-Reads the scene prompt library below, calls the OpenAI image API, and
-saves images into ../img/ using the exact filenames the index.html
-expects (01-grand-central-a.jpg, 02-subway-a.jpg, ...).
+Reads the scene prompt library below, calls Replicate's image API
+(default: black-forest-labs/flux-1.1-pro), and saves images into
+../img/ using the exact filenames the index.html expects
+(01-grand-central-a.jpg, 02-subway-a.jpg, ...).
 
 Idempotent: skips any slot whose file already exists. Pass --force to
 overwrite. Pass --scene NN to limit to one scene. Pass --slot a|b|c to
 limit to one variant per scene.
 
-Costs roughly $0.04/image on dall-e-3 standard (~$1.50 for the full
-batch of 39 images), $0.08/image HD.
+Cost (approx, single image):
+    flux-schnell       ~$0.003
+    flux-dev           ~$0.025
+    flux-1.1-pro       ~$0.040   (default — best photo quality)
+    flux-1.1-pro-ultra ~$0.060
+Full batch (40 images) on flux-1.1-pro ≈ $1.60.
 
 Usage:
-    export OPENAI_API_KEY=sk-...
+    export REPLICATE_API_TOKEN=r8_...
     pip install -r requirements.txt
     python tools/generate.py                       # all missing slots
     python tools/generate.py --scene 03            # only scene 03
     python tools/generate.py --slot a              # only the a slot of each scene
-    python tools/generate.py --quality hd          # higher quality (2x cost)
-    python tools/generate.py --model gpt-image-1   # use newer gpt-image-1
-    python tools/generate.py --hero                # also regenerate img/hero.jpg
+    python tools/generate.py --model schnell       # fast/cheap iteration
+    python tools/generate.py --hero                # also (re)generate hero.jpg
+    python tools/generate.py --hero-only           # just the hero image
     python tools/generate.py --dry-run             # print plan, don't call API
+    python tools/generate.py --force --scene 04    # overwrite all 3 slots of scene 04
 """
 from __future__ import annotations
 import argparse
-import base64
-import json
 import os
 import sys
 import time
 from pathlib import Path
 
 try:
-    from openai import OpenAI
+    import replicate
 except ImportError:
-    sys.stderr.write("Missing openai package. Install with: pip install -r requirements.txt\n")
+    sys.stderr.write("Missing replicate package. Install with: pip install -r requirements.txt\n")
     sys.exit(1)
 
 try:
@@ -47,10 +51,9 @@ except ImportError:
 
 
 # ─── Character consistency ──────────────────────────────────────────
-# Same Jerome description prepended to every prompt so DALL-E renders a
-# recognizably-similar character across scenes. The model doesn't have
-# true cross-generation memory, so the more detail in the description,
-# the more consistent the output.
+# Same Jerome description prepended to every prompt so generations look
+# recognizably-similar across scenes. Diffusion models have no cross-call
+# memory, so detailed character lock in the prompt is the only lever.
 JEROME = (
     "Jerome Baker: a single anthropomorphized 5.5-foot tall handblown "
     "translucent purple glass bong, smooth ornate craftsmanship with "
@@ -199,6 +202,27 @@ HERO_PROMPT = (
     "subject, no text, no watermarks."
 )
 
+# ─── Replicate model registry ───────────────────────────────────────
+# Short aliases mapped to actual Replicate model identifiers. flux-1.1-pro
+# is the default — best photo realism in the FLUX family. Schnell is the
+# fast/cheap iteration option. Dev is the open-weights middle ground.
+MODELS = {
+    "pro":     "black-forest-labs/flux-1.1-pro",
+    "ultra":   "black-forest-labs/flux-1.1-pro-ultra",
+    "dev":     "black-forest-labs/flux-dev",
+    "schnell": "black-forest-labs/flux-schnell",
+    "sdxl":    "stability-ai/sdxl",
+}
+
+# Per-model approximate cost / image (USD). For run-cost estimation only.
+COSTS = {
+    "pro":     0.040,
+    "ultra":   0.060,
+    "dev":     0.025,
+    "schnell": 0.003,
+    "sdxl":    0.011,
+}
+
 
 def out_path(img_dir: Path, scene_id: str, slot: str, slug: str, hero: bool = False) -> Path:
     if hero:
@@ -218,39 +242,76 @@ def build_prompt(scene_id: str, slot: str) -> str:
     )
 
 
-def generate_one(client: OpenAI, prompt: str, dest: Path, model: str, quality: str, size: str, dry: bool) -> str:
+def _input_for(model_alias: str, prompt: str, aspect_ratio: str) -> dict:
+    """Build the input dict the chosen model expects. FLUX models accept
+    aspect_ratio + output_format; SDXL needs width/height."""
+    if model_alias in ("pro", "ultra", "dev", "schnell"):
+        d = {
+            "prompt": prompt,
+            "aspect_ratio": aspect_ratio,
+            "output_format": "jpg",
+            "output_quality": 92,
+            "safety_tolerance": 5,
+        }
+        if model_alias == "schnell":
+            d.pop("safety_tolerance", None)
+        if model_alias == "ultra":
+            d["raw"] = False
+        return d
+    if model_alias == "sdxl":
+        # Map common AR strings to pixel dims for SDXL.
+        sizes = {"16:9": (1344, 768), "4:3": (1152, 896), "1:1": (1024, 1024)}
+        w, h = sizes.get(aspect_ratio, (1344, 768))
+        return {"prompt": prompt, "width": w, "height": h, "num_inference_steps": 30}
+    return {"prompt": prompt}
+
+
+def _download(url_or_file, dest: Path) -> int:
+    """Replicate returns either a URL string, a FileOutput object with
+    .read(), or a list of those. Save whichever to dest. Returns bytes
+    written."""
+    target = url_or_file
+    if isinstance(target, list):
+        target = target[0]
+
+    # Newer SDK: FileOutput with .read()
+    if hasattr(target, "read"):
+        data = target.read()
+        dest.write_bytes(data)
+        return len(data)
+
+    url = str(target)
+    r = requests.get(url, timeout=120)
+    r.raise_for_status()
+    dest.write_bytes(r.content)
+    return len(r.content)
+
+
+def generate_one(prompt: str, dest: Path, model_alias: str, aspect_ratio: str, dry: bool) -> str:
     if dry:
         return f"[DRY] would generate → {dest.name}\n        {prompt[:120]}…"
-    kwargs = dict(model=model, prompt=prompt, size=size, n=1)
-    # quality flag works on dall-e-3; gpt-image-1 uses 'high'/'medium'/'low'
-    if model == "dall-e-3":
-        kwargs["quality"] = quality  # "standard" or "hd"
-        kwargs["response_format"] = "url"
-    elif model == "gpt-image-1":
-        kwargs["quality"] = {"standard": "medium", "hd": "high"}.get(quality, "high")
-    resp = client.images.generate(**kwargs)
-    img = resp.data[0]
-    if getattr(img, "url", None):
-        r = requests.get(img.url, timeout=60)
-        r.raise_for_status()
-        dest.write_bytes(r.content)
-    elif getattr(img, "b64_json", None):
-        dest.write_bytes(base64.b64decode(img.b64_json))
-    else:
-        raise RuntimeError("OpenAI returned no url or b64_json")
-    return f"  ✓ {dest.name}  ({dest.stat().st_size // 1024} KB)"
+    model = MODELS[model_alias]
+    inp = _input_for(model_alias, prompt, aspect_ratio)
+    output = replicate.run(model, input=inp)
+    n = _download(output, dest)
+    return f"  ✓ {dest.name}  ({n // 1024} KB)"
 
 
 def main():
-    p = argparse.ArgumentParser(description="Generate Jerome Baker scene images via DALL-E.")
+    p = argparse.ArgumentParser(
+        description="Generate Jerome Baker scene images via Replicate (FLUX by default).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="Models: pro (default) | ultra | dev | schnell | sdxl",
+    )
     p.add_argument("--scene", help="Only this scene id (01-13)")
     p.add_argument("--slot", choices=["a", "b", "c"], help="Only this slot per scene")
     p.add_argument("--force", action="store_true", help="Overwrite existing files")
     p.add_argument("--hero", action="store_true", help="Also (re)generate img/hero.jpg")
     p.add_argument("--hero-only", action="store_true", help="Generate just the hero image")
-    p.add_argument("--model", default="dall-e-3", choices=["dall-e-3", "gpt-image-1"])
-    p.add_argument("--quality", default="standard", choices=["standard", "hd"])
-    p.add_argument("--size", default="1792x1024", help="DALL-E size. 1792x1024 (landscape), 1024x1792 (portrait), 1024x1024")
+    p.add_argument("--model", default="pro", choices=list(MODELS.keys()),
+                   help="Replicate model alias")
+    p.add_argument("--aspect", default="16:9", choices=["16:9", "4:3", "1:1"],
+                   help="Aspect ratio (default 16:9 — matches hero + first slot)")
     p.add_argument("--dry-run", action="store_true", help="Print plan, don't call API")
     args = p.parse_args()
 
@@ -258,11 +319,13 @@ def main():
     img_dir = here.parent / "img"
     img_dir.mkdir(exist_ok=True)
 
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key and not args.dry_run:
-        sys.stderr.write("Missing OPENAI_API_KEY env var.\n")
+    if not args.dry_run and not os.environ.get("REPLICATE_API_TOKEN"):
+        sys.stderr.write(
+            "Missing REPLICATE_API_TOKEN env var.\n"
+            "Get one at https://replicate.com/account/api-tokens then:\n"
+            "    export REPLICATE_API_TOKEN=r8_...\n"
+        )
         sys.exit(2)
-    client = OpenAI(api_key=api_key) if not args.dry_run else None
 
     plan: list[tuple[str, str, Path]] = []  # (scene_id, slot, dest)
 
@@ -286,26 +349,24 @@ def main():
         print("Nothing to generate — all targeted slots already exist. (use --force to overwrite)")
         return
 
-    est_cost_per = {"standard": 0.04, "hd": 0.08}.get(args.quality, 0.04)
-    if args.model == "gpt-image-1":
-        est_cost_per = 0.17  # rough — gpt-image-1 high is ~$0.17
-    total = len(plan) * est_cost_per
+    cost_per = COSTS.get(args.model, 0.04)
+    total = len(plan) * cost_per
 
-    print(f"Plan: {len(plan)} image(s) · model={args.model} · quality={args.quality} · size={args.size}")
-    print(f"Estimated cost: ${total:.2f}  (${est_cost_per:.2f}/image)")
+    print(f"Plan: {len(plan)} image(s) · model={MODELS[args.model]} · aspect={args.aspect}")
+    print(f"Estimated cost: ${total:.2f}  (${cost_per:.3f}/image)")
     print()
 
     for i, (sid, slot, dest) in enumerate(plan, 1):
-        label = f"hero" if sid == "hero" else f"scene {sid} slot {slot}"
+        label = "hero" if sid == "hero" else f"scene {sid} slot {slot}"
         print(f"[{i}/{len(plan)}] {label} → {dest.name}")
         prompt = build_prompt(sid, slot) if sid != "hero" else HERO_PROMPT
         try:
-            line = generate_one(client, prompt, dest, args.model, args.quality, args.size, args.dry_run)
+            line = generate_one(prompt, dest, args.model, args.aspect, args.dry_run)
             print(line)
         except Exception as e:
             print(f"  ✗ FAILED: {e}", file=sys.stderr)
         if not args.dry_run and i < len(plan):
-            time.sleep(0.5)  # tiny throttle to be polite to the API
+            time.sleep(0.3)  # tiny throttle
 
 
 if __name__ == "__main__":
