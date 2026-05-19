@@ -130,7 +130,7 @@ SCENES = {
         "base": "Rockaway Beach New York on a sunny summer afternoon, white sand, blue Atlantic, beach umbrellas and casual beachgoers.",
         "variants": {
             "a": "Wide drone-style aerial — Jerome standing upright on the sand surrounded by colorful beach umbrellas and normal beachgoers, his purple glass catching the sunlight.",
-            "b": "The bong alone on a beach towel laid out on the white sand, beach chair and tote bag beside it, no other figures in the frame.",
+            "b": "TWO young women in colorful summer bikinis, both facing the bong, one on each side, calmly spraying Windex from blue bottles and wiping its purple glass with microfiber cloths — the gesture deliberately mimics rubbing sunscreen onto a beach companion. Deadpan composure. Beach towel and chair beside. STRICT: only the two women + the bong in the frame, NO MEN ANYWHERE in the scene, no male figures, no third person.",
             "c": "Jerome facing the open ocean, waves rolling in, late afternoon sun, fog wisp visible drifting from his stem against the sky.",
         },
     },

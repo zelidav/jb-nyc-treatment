@@ -89,7 +89,7 @@ MOTION_PROMPTS = {
     "05_c": "Close on Jerome's fog drifting gently over a basket of warm bread and a small butter dish, late lunch light, atmospheric",
 
     "06_a": "Aerial drone shot rotating slowly around Jerome standing on Rockaway Beach, beachgoers move below, waves rolling onto the sand",
-    "06_b": "Two women in summer swimsuits standing on either side of Jerome, spraying Windex from blue bottles and wiping his purple glass with microfiber cloths, deliberate motion that mimics applying suntan lotion, deadpan composure",
+    "06_b": "Two women in colorful bikinis on either side of the purple bong, spraying Windex from blue bottles and wiping its glass with microfiber cloths in slow deliberate strokes — mimics applying suntan lotion to a beach companion. Deadpan composure. Only the two women and the bong in frame, no other figures.",
     "06_c": "Jerome facing the open ocean, waves rolling in continuously, late afternoon golden sun, fog wisp drifting from his stem in the sea breeze",
 
     "07_a": "Elevator doors slide open onto the Gansevoort rooftop, Jerome visible in the doorway, cocktail crowd turns to look",
