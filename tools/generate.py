@@ -575,6 +575,8 @@ def main():
                    help="Aspect ratio (default 16:9 — matches hero + first slot)")
     p.add_argument("--no-composite", action="store_true",
                    help="Skip the PIL composite pipeline; render Jerome via text-to-image only.")
+    p.add_argument("--parallel", type=int, default=1,
+                   help="Concurrent predictions (default 1). Set to ~8 for fast batches.")
     p.add_argument("--dry-run", action="store_true", help="Print plan, don't call API")
     args = p.parse_args()
 
@@ -648,9 +650,9 @@ def main():
     print(f"Estimated cost: ${total:.2f}  (${cost_per:.3f}/image)")
     print()
 
-    for i, (sid, slot, dest) in enumerate(plan, 1):
+    def _one(args_tuple):
+        sid, slot, dest = args_tuple
         label = "hero" if sid == "hero" else f"scene {sid} slot {slot}"
-        print(f"[{i}/{len(plan)}] {label} → {dest.name}")
         try:
             if args.model == "nb":
                 line = generate_one_nb(sid, slot, dest, nb_reference_url,
@@ -663,11 +665,26 @@ def main():
                     sid, slot, dest, bong_png_bytes,
                     args.model, args.aspect, args.dry_run,
                 )
-            print(line)
+            return f"  {label} → {dest.name}\n{line}"
         except Exception as e:
-            print(f"  ✗ FAILED: {e}", file=sys.stderr)
-        if not args.dry_run and i < len(plan):
-            time.sleep(0.3)  # tiny throttle
+            return f"  ✗ {label} → {dest.name} FAILED: {e}"
+
+    if args.parallel > 1 and not args.dry_run:
+        # Concurrent predictions — Replicate accepts multiple in-flight,
+        # bounded by account-wide rate limits (auto-retried).
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        print(f"Firing {len(plan)} prediction(s) with parallel={args.parallel}…")
+        with ThreadPoolExecutor(max_workers=args.parallel) as ex:
+            futs = {ex.submit(_one, t): t for t in plan}
+            done = 0
+            for fut in as_completed(futs):
+                done += 1
+                print(f"[{done}/{len(plan)}] {fut.result()}")
+    else:
+        for i, t in enumerate(plan, 1):
+            print(f"[{i}/{len(plan)}] {_one(t)}")
+            if not args.dry_run and i < len(plan):
+                time.sleep(0.3)
 
 
 if __name__ == "__main__":

@@ -47,6 +47,11 @@ on:
         description: 'Overwrite existing images'
         type: boolean
         default: false
+      parallel:
+        description: 'Concurrent predictions (1=sequential, 8=fast)'
+        required: false
+        default: '8'
+        type: string
 
 jobs:
   generate:
@@ -83,6 +88,7 @@ jobs:
           if [ "${{ inputs.hero }}" = "true" ];      then ARGS="$ARGS --hero";      fi
           if [ "${{ inputs.hero_only }}" = "true" ]; then ARGS="$ARGS --hero-only"; fi
           if [ "${{ inputs.force }}" = "true" ];     then ARGS="$ARGS --force";     fi
+          if [ -n "${{ inputs.parallel }}" ]; then ARGS="$ARGS --parallel ${{ inputs.parallel }}"; fi
           echo "Running: python tools/generate.py $ARGS"
           python tools/generate.py $ARGS
 
