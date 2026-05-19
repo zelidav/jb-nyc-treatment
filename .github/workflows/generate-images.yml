@@ -65,11 +65,15 @@ jobs:
 
       - name: Generate images
         env:
-          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          # The replicate SDK reads REPLICATE_API_TOKEN by convention; we
+          # map either secret name (REPLICATE_KEY or REPLICATE_API_TOKEN)
+          # to that env var so the workflow works regardless of which name
+          # the secret was added under.
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN || secrets.REPLICATE_KEY }}
         run: |
           set -e
           if [ -z "$REPLICATE_API_TOKEN" ]; then
-            echo "::error::REPLICATE_API_TOKEN secret is not set. Add it at Settings → Secrets and variables → Actions → New repository secret."
+            echo "::error::Neither REPLICATE_API_TOKEN nor REPLICATE_KEY secret is set. Add one at Settings → Secrets and variables → Actions → New repository secret."
             exit 1
           fi
           ARGS="--model ${{ inputs.model }} --aspect ${{ inputs.aspect }}"
