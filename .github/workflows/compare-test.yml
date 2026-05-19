@@ -1,0 +1,53 @@
+name: Compare composite vs flux-redux (one scene)
+
+# One-off comparison: generates both Option 1 (PIL composite the real bong
+# PNG onto a generated background) and Option 2 (flux-redux with reference)
+# for the Federal Building scene. Outputs commit to master so we can decide
+# which path to scale to all 13 scenes.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run compare script
+        env:
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN || secrets.REPLICATE_KEY }}
+        run: |
+          if [ -z "$REPLICATE_API_TOKEN" ]; then
+            echo "::error::REPLICATE_KEY or REPLICATE_API_TOKEN secret not set."
+            exit 1
+          fi
+          python tools/compare_one_scene.py
+
+      - name: Commit output
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add img/compare-*.jpg img/compare-*.png 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "ci: compare composite vs flux-redux (federal building)"
+            git push
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Comparison run" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Option 1 (composite): \`img/compare-option1-composite.jpg\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Option 2 (flux-redux): \`img/compare-option2-redux.jpg\`" >> $GITHUB_STEP_SUMMARY
