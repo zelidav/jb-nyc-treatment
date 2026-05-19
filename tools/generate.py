@@ -292,9 +292,29 @@ def generate_one(prompt: str, dest: Path, model_alias: str, aspect_ratio: str, d
         return f"[DRY] would generate → {dest.name}\n        {prompt[:120]}…"
     model = MODELS[model_alias]
     inp = _input_for(model_alias, prompt, aspect_ratio)
-    output = replicate.run(model, input=inp)
-    n = _download(output, dest)
-    return f"  ✓ {dest.name}  ({n // 1024} KB)"
+    # Replicate throttles to 6 req/min + 1 burst when account balance is
+    # "low" (under ~$5 effective). Re-tries that respect the server's
+    # Retry-After hint cover the tail of any batch run cleanly.
+    max_attempts = 4
+    for attempt in range(1, max_attempts + 1):
+        try:
+            output = replicate.run(model, input=inp)
+            n = _download(output, dest)
+            return f"  ✓ {dest.name}  ({n // 1024} KB)"
+        except Exception as e:
+            msg = str(e)
+            is_429 = "429" in msg or "throttled" in msg.lower() or "rate limit" in msg.lower()
+            if not is_429 or attempt == max_attempts:
+                raise
+            # Extract "resets in ~Xs" if present, else exponential backoff.
+            wait = 12 * attempt
+            import re
+            m = re.search(r"in ~?(\d+)\s*s", msg)
+            if m:
+                wait = max(int(m.group(1)) + 2, 6)
+            print(f"  ⟲ rate-limited (attempt {attempt}/{max_attempts}) — waiting {wait}s…")
+            time.sleep(wait)
+    raise RuntimeError("unreachable")
 
 
 def main():
