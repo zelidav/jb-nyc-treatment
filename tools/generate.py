@@ -241,15 +241,36 @@ def out_path(img_dir: Path, scene_id: str, slot: str, slug: str, hero: bool = Fa
     return img_dir / f"{scene_id}-{slug}-{slot}.jpg"
 
 
+# Tight inline character description used in the SCENE-first prompt
+# template. FLUX over-indexes on the first thing in the prompt — if the
+# Jerome description leads, every output is a product shot of the bong.
+# Leading with the scene + treating Jerome as a subject INSIDE that scene
+# is what makes the model put him on the street instead of on a backdrop.
+JEROME_INLINE = (
+    "In the scene, standing upright at full human height like a tall "
+    "purple guest character: a 5-and-a-half-foot anthropomorphized "
+    "handblown translucent deep-amethyst-purple glass beaker bong with "
+    "a long straight cylindrical neck, a decorative purple glass coil "
+    "wrap at the flared mouthpiece, a small cluster of dichroic "
+    "iridescent glass marbles (blue/green/teal/pearlescent) attached to "
+    "the side of the neck, a golden-yellow glass downstem and bowl "
+    "protruding from the lower side, and a round spherical purple-glass "
+    "beaker base. Translucent deep purple throughout, faint internal "
+    "purple LED glow, a thin wisp of pale smoke drifting from the top "
+    "mouthpiece. He must be visible in the frame as a character inside "
+    "the scene, not isolated on a studio backdrop."
+)
+
 def build_prompt(scene_id: str, slot: str) -> str:
     if scene_id == "hero":
         return HERO_PROMPT
     s = SCENES[scene_id]
+    # SCENE FIRST — locks the location/composition. Jerome comes in as the
+    # subject standing within that scene. Style closes.
     return (
-        f"{JEROME}\n\n"
-        f"Scene: {s['base']}\n\n"
-        f"Shot: {s['variants'][slot]}\n\n"
-        f"Style: {STYLE}"
+        f"{s['base']} {s['variants'][slot]} "
+        f"{JEROME_INLINE} "
+        f"{STYLE}"
     )
 
 
@@ -263,9 +284,15 @@ def _input_for(model_alias: str, prompt: str, aspect_ratio: str) -> dict:
             "output_format": "jpg",
             "output_quality": 92,
             "safety_tolerance": 5,
+            # Lets the model's internal LLM rewrite the prompt for better
+            # multi-element scene composition. Without this, complex
+            # location-plus-subject prompts often collapse into a single
+            # studio shot of the subject. Schnell doesn't support it.
+            "prompt_upsampling": True,
         }
         if model_alias == "schnell":
             d.pop("safety_tolerance", None)
+            d.pop("prompt_upsampling", None)
         if model_alias == "ultra":
             d["raw"] = False
         return d
